@@ -51,12 +51,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 async fn hello(
     _: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Box<dyn std::error::Error + Send + Sync>> {
-    let offset_in_file = rand::thread_rng().gen_range(0..FILE_SIZE - PROCESS_SIZE);
+    let offset_in_file = choose_offset_in_file().await;
+
+    get_auth_token().await;
 
     let mut file = tokio::fs::File::open(DATA_FILE).await?;
     let chunk_count = PROCESS_SIZE / CHUNK_SIZE;
     let chunks = 0..chunk_count;
     let mut checksum_tasks = Vec::with_capacity(chunk_count as usize);
+
+    log_something().await;
 
     for chunk_index in chunks {
         let mut chunk: Vec<MaybeUninit<u8>> = Vec::with_capacity(CHUNK_SIZE as usize);
@@ -80,6 +84,8 @@ async fn hello(
         checksum_total = checksum_total.wrapping_add(task.await?);
     }
 
+    log_something().await;
+
     Ok(Response::new(Full::new(Bytes::from(
         checksum_total.to_string(),
     ))))
@@ -87,10 +93,39 @@ async fn hello(
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
     tokio::task::spawn(async move {
+        log_something().await;
+
         let mut hasher = Sha512::new();
         hasher.update(&bytes);
         let result = hasher.finalize();
 
         u64::from_be_bytes(result[0..8].try_into().unwrap())
     })
+}
+
+async fn choose_offset_in_file() -> u64 {
+    // We spawn a task to simulate some more realism (e.g. maybe the offset comes from some
+    // config file or gets deserialized from a request or is received from a work queue).
+    tokio::task::spawn(async move {
+        log_something().await;
+        rand::thread_rng().gen_range(0..FILE_SIZE - PROCESS_SIZE)
+    })
+    .await
+    .unwrap()
+}
+
+async fn log_something() {
+    // Just some fake logging for extra realism.
+    tokio::task::yield_now().await;
+}
+
+async fn get_auth_token() {
+    // Simulate talking to some imaginary web service.
+
+    tokio::task::spawn(async move {
+        log_something().await;
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    })
+    .await
+    .unwrap()
 }

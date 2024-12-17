@@ -1,6 +1,8 @@
 import http from 'k6/http';
 
 export const options = {
+  // Avoid the extreme hammering if the server starts rejecting us.
+  minIterationDuration: '10ms',
 };
 
 export default function () {

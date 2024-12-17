@@ -58,8 +58,6 @@ async fn hello(
     let chunks = 0..chunk_count;
     let mut checksum_tasks = Vec::with_capacity(chunk_count as usize);
 
-    println!("Reading file");
-
     for chunk_index in chunks {
         let mut chunk: Vec<MaybeUninit<u8>> = Vec::with_capacity(CHUNK_SIZE as usize);
         unsafe {
@@ -76,15 +74,11 @@ async fn hello(
         checksum_tasks.push(schedule_checksum_task(chunk).await);
     }
 
-    println!("Waiting for calculator");
-
     let mut checksum_total: u64 = 0;
 
     for task in checksum_tasks {
         checksum_total = checksum_total.wrapping_add(task.await?);
     }
-
-    println!("Done");
 
     Ok(Response::new(Full::new(Bytes::from(
         checksum_total.to_string(),

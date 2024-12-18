@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 }
 
-static REQUEST_HANDLER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(32));
+static REQUEST_HANDLER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(100));
 
 // Each request goes through one of N bottlenecks that represent some shared resource.
 // e.g. in a media service this would be one media stream being served to multiple users

@@ -52,19 +52,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 static REQUEST_HANDLER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(100));
 
-// Each request goes through one of N bottlenecks that represent some shared resource.
-// e.g. in a media service this would be one media stream being served to multiple users
-// similarly, this could be a mailbox or queue or database entity.
-const BOTTLENECK_COUNT: usize = 4;
-
-// Each bottleneck satisfies up to this many requests concurrently.
-const BOTTLENECK_SIZE: usize = 4;
-
-static BOTTLENECKS: LazyLock<Vec<Semaphore>> = LazyLock::new(|| {
-    (0..BOTTLENECK_COUNT)
-        .map(|_| Semaphore::new(BOTTLENECK_SIZE))
-        .collect()
-});
+static IO_BUFFER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(10));
+static TASK_SPAWN_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
+static CHECKSUM_TASK_SPAWN_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(8));
 
 async fn hello(
     _: Request<hyper::body::Incoming>,
@@ -84,12 +74,7 @@ async fn hello(
 
     get_auth_token().await;
 
-    let bottleneck_index = rand::thread_rng().gen_range(0..BOTTLENECK_COUNT);
-
-    let mut file = {
-        let _permit = BOTTLENECKS[bottleneck_index].acquire().await;
-        tokio::fs::File::open(DATA_FILE).await?
-    };
+    let mut file = tokio::fs::File::open(DATA_FILE).await?;
 
     let chunk_count = PROCESS_SIZE / CHUNK_SIZE;
     let chunks = 0..chunk_count;
@@ -108,9 +93,10 @@ async fn hello(
 
         let chunk_offset = offset_in_file + chunk_index * CHUNK_SIZE;
 
+        file.seek(std::io::SeekFrom::Start(chunk_offset)).await?;
+
         {
-            let _permit = BOTTLENECKS[bottleneck_index].acquire().await;
-            file.seek(std::io::SeekFrom::Start(chunk_offset)).await?;
+            let _permit = IO_BUFFER_SEMAPHORE.acquire().await?;
             file.read_exact(chunk.as_mut_slice()).await?;
         }
 
@@ -131,12 +117,17 @@ async fn hello(
 }
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
+    let _checksum_permit = CHECKSUM_TASK_SPAWN_SEMAPHORE.acquire().await.unwrap();
+    let _permit = TASK_SPAWN_SEMAPHORE.acquire().await.unwrap();
     tokio::task::spawn(async move {
+        drop(_permit);
         log_something().await;
 
         let mut hasher = Sha512::new();
         hasher.update(&bytes);
         let result = hasher.finalize();
+
+        drop(_checksum_permit);
 
         u64::from_be_bytes(result[0..8].try_into().unwrap())
     })
@@ -145,7 +136,9 @@ async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u
 async fn choose_offset_in_file() -> u64 {
     // We spawn a task to simulate some more realism (e.g. maybe the offset comes from some
     // config file or gets deserialized from a request or is received from a work queue).
+    let _permit = TASK_SPAWN_SEMAPHORE.acquire().await.unwrap();
     tokio::task::spawn(async move {
+        drop(_permit);
         log_something().await;
         rand::thread_rng().gen_range(0..FILE_SIZE - PROCESS_SIZE)
     })
@@ -161,7 +154,9 @@ async fn log_something() {
 async fn get_auth_token() {
     // Simulate talking to some imaginary web service.
 
+    let _permit = TASK_SPAWN_SEMAPHORE.acquire().await.unwrap();
     tokio::task::spawn(async move {
+        drop(_permit);
         log_something().await;
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     })

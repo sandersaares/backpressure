@@ -13,7 +13,7 @@ use sha2::{Digest, Sha512};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Semaphore;
 use tokio::task::JoinError;
 
 const DATA_FILE: &str = "data.bin";

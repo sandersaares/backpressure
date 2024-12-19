@@ -52,9 +52,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 static REQUEST_HANDLER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(100));
 
-static IO_BUFFER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(10));
-static TASK_SPAWN_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
-static CHECKSUM_TASK_SPAWN_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(8));
+static IO_BUFFER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(32));
+static TASK_SPAWN_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(32));
+static CHECKSUM_TASK_SPAWN_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(32));
 
 async fn hello(
     _: Request<hyper::body::Incoming>,

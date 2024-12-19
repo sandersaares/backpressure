@@ -94,7 +94,7 @@ async fn hello(
 
 static CONCURRENT_CHECKSUM_TASKS: AtomicUsize = AtomicUsize::new(0);
 // If we start to accumulate more than this amount of tasks, processing starts to slow down rapidly.
-const MAX_FAST_CONCURRENT_CHECKSUM_TASKS: usize = 16;
+const MAX_FAST_CONCURRENT_CHECKSUM_TASKS: usize = 10;
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
     tokio::task::spawn(async move {
@@ -102,7 +102,7 @@ async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u
 
         let tasks = CONCURRENT_CHECKSUM_TASKS.fetch_add(1, Ordering::SeqCst);
 
-        let rounds = 1_usize + tasks.saturating_sub(MAX_FAST_CONCURRENT_CHECKSUM_TASKS);
+        let rounds = 2usize.pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_CHECKSUM_TASKS) as u32);
 
         let mut hasher = Sha512::new();
 

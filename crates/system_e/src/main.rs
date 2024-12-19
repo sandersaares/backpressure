@@ -10,6 +10,7 @@ use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use rand::Rng;
+use scope_guard::scope_guard;
 use sha2::{Digest, Sha512};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -114,8 +115,10 @@ async fn hello(
 
         {
             IO_BUFFER_SEMAPHORE.fetch_add(1, Ordering::Relaxed);
+            scope_guard!(|| {
+                IO_BUFFER_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
+            });
             file.read_exact(chunk.as_mut_slice()).await?;
-            IO_BUFFER_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
         }
 
         checksum_tasks.push(schedule_checksum_task(chunk).await);
@@ -139,13 +142,18 @@ async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u
     TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::Relaxed);
     tokio::task::spawn(async move {
         TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
-        log_something().await;
 
-        let mut hasher = Sha512::new();
-        hasher.update(&bytes);
-        let result = hasher.finalize();
+        let result = {
+            scope_guard!(|| {
+                CHECKSUM_TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
+            });
 
-        CHECKSUM_TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
+            log_something().await;
+
+            let mut hasher = Sha512::new();
+            hasher.update(&bytes);
+            hasher.finalize()
+        };
 
         u64::from_be_bytes(result[0..8].try_into().unwrap())
     })

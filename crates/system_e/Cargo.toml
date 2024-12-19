@@ -10,3 +10,4 @@ http-body-util = "0.1"
 hyper-util = { version = "0.1", features = ["full"] }
 rand = "0"
 sha2 = "0"
+scope-guard = "1"

@@ -77,9 +77,9 @@ async fn hello(
     // If we can already determine that some bottleneck is full up, we reject the request.
     // This is a rough approximation, of course, as the bottleneck may free up immediately
     // and not exist by the time this request reaches it.
-    if IO_BUFFER_SEMAPHORE.load(Ordering::Relaxed) > BACKPRESSURE_THRESHOLD
-        || TASK_SPAWN_SEMAPHORE.load(Ordering::Relaxed) > BACKPRESSURE_THRESHOLD
-        || CHECKSUM_TASK_SPAWN_SEMAPHORE.load(Ordering::Relaxed) > BACKPRESSURE_THRESHOLD
+    if IO_BUFFER_SEMAPHORE.load(Ordering::SeqCst) > BACKPRESSURE_THRESHOLD
+        || TASK_SPAWN_SEMAPHORE.load(Ordering::SeqCst) > BACKPRESSURE_THRESHOLD
+        || CHECKSUM_TASK_SPAWN_SEMAPHORE.load(Ordering::SeqCst) > BACKPRESSURE_THRESHOLD
     {
         let mut response = Response::new(Full::new(Bytes::from(
             "Too many requests, please try again later.",
@@ -114,9 +114,9 @@ async fn hello(
         file.seek(std::io::SeekFrom::Start(chunk_offset)).await?;
 
         {
-            IO_BUFFER_SEMAPHORE.fetch_add(1, Ordering::Relaxed);
+            IO_BUFFER_SEMAPHORE.fetch_add(1, Ordering::SeqCst);
             scope_guard!(|| {
-                IO_BUFFER_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
+                IO_BUFFER_SEMAPHORE.fetch_sub(1, Ordering::SeqCst);
             });
             file.read_exact(chunk.as_mut_slice()).await?;
         }
@@ -138,14 +138,14 @@ async fn hello(
 }
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
-    CHECKSUM_TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::Relaxed);
-    TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::Relaxed);
+    CHECKSUM_TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::SeqCst);
+    TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::SeqCst);
     tokio::task::spawn(async move {
-        TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
+        TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::SeqCst);
 
         let result = {
             scope_guard!(|| {
-                CHECKSUM_TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
+                CHECKSUM_TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::SeqCst);
             });
 
             log_something().await;
@@ -162,9 +162,9 @@ async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u
 async fn choose_offset_in_file() -> u64 {
     // We spawn a task to simulate some more realism (e.g. maybe the offset comes from some
     // config file or gets deserialized from a request or is received from a work queue).
-    TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::Relaxed);
+    TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::SeqCst);
     tokio::task::spawn(async move {
-        TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
+        TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::SeqCst);
         log_something().await;
         rand::thread_rng().gen_range(0..FILE_SIZE - PROCESS_SIZE)
     })
@@ -180,9 +180,9 @@ async fn log_something() {
 async fn get_auth_token() {
     // Simulate talking to some imaginary web service.
 
-    TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::Relaxed);
+    TASK_SPAWN_SEMAPHORE.fetch_add(1, Ordering::SeqCst);
     tokio::task::spawn(async move {
-        TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::Relaxed);
+        TASK_SPAWN_SEMAPHORE.fetch_sub(1, Ordering::SeqCst);
         log_something().await;
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     })

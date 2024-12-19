@@ -118,7 +118,7 @@ async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u
 
         let tasks = CONCURRENT_CHECKSUM_TASKS.fetch_add(1, Ordering::SeqCst);
 
-        let rounds = 1_usize + tasks.saturating_sub(MAX_FAST_CONCURRENT_CHECKSUM_TASKS);
+        let rounds = 2usize.pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_CHECKSUM_TASKS) as u32);
 
         let mut hasher = Sha512::new();
 

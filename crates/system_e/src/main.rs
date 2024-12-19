@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 static REQUEST_HANDLER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(100));
 
-const BACKPRESSURE_THRESHOLD: usize = 32;
+const BACKPRESSURE_THRESHOLD: usize = 16;
 
 static IO_BUFFER_SEMAPHORE: AtomicUsize = AtomicUsize::new(0);
 static TASK_SPAWN_SEMAPHORE: AtomicUsize = AtomicUsize::new(0);

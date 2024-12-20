@@ -109,8 +109,8 @@ async fn hello(
 
 static CONCURRENT_CHECKSUM_TASKS: AtomicUsize = AtomicUsize::new(0);
 // If we start to accumulate more than this amount of tasks, processing starts to slow down rapidly.
-const MAX_FAST_CONCURRENT_CHECKSUM_TASKS: usize = 75;
-const MAX_CHECKSUM_DIFFICULTY: usize = 10;
+const MAX_FAST_CONCURRENT_CHECKSUM_TASKS: usize = 50;
+const MAX_CHECKSUM_DIFFICULTY: usize = 32;
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
     tokio::task::spawn(async move {

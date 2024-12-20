@@ -74,7 +74,29 @@ async fn hello(
 
         let chunk_offset = offset_in_file + chunk_index * CHUNK_SIZE;
         file.seek(std::io::SeekFrom::Start(chunk_offset)).await?;
-        file.read_exact(chunk.as_mut_slice()).await?;
+
+        {
+            let tasks = CONCURRENT_IO_TASKS.fetch_add(1, Ordering::SeqCst);
+
+            let rounds = 2usize
+                .pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_IO_TASKS) as u32 / 3)
+                .min(MAX_IO_DIFFICULTY);
+
+            file.read_exact(chunk.as_mut_slice()).await?;
+
+            // If there are already too many concurrent I/O tasks, the I/O device starts
+            // to slow down (simulated here by reading the chunk multiple times and by re-
+            // aligning the offset to continue the read from some other location to avoid
+            // fast cached reads).
+            for _ in 1..rounds {
+                let offset_in_file = choose_offset_in_file().await;
+                let chunk_offset = offset_in_file + chunk_index * CHUNK_SIZE;
+                file.seek(std::io::SeekFrom::Start(chunk_offset)).await?;
+                file.read_exact(chunk.as_mut_slice()).await?;
+            }
+
+            CONCURRENT_IO_TASKS.fetch_sub(1, Ordering::SeqCst);
+        }
 
         checksum_tasks.push(schedule_checksum_task(chunk).await);
     }
@@ -92,30 +114,18 @@ async fn hello(
     ))))
 }
 
-static CONCURRENT_CHECKSUM_TASKS: AtomicUsize = AtomicUsize::new(0);
+static CONCURRENT_IO_TASKS: AtomicUsize = AtomicUsize::new(0);
 // If we start to accumulate more than this amount of tasks, processing starts to slow down rapidly.
-const MAX_FAST_CONCURRENT_CHECKSUM_TASKS: usize = 50;
-const MAX_CHECKSUM_DIFFICULTY: usize = 32;
+const MAX_FAST_CONCURRENT_IO_TASKS: usize = 50;
+const MAX_IO_DIFFICULTY: usize = 32;
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
     tokio::task::spawn(async move {
         log_something().await;
 
-        let tasks = CONCURRENT_CHECKSUM_TASKS.fetch_add(1, Ordering::SeqCst);
-
-        let rounds = 2usize
-            .pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_CHECKSUM_TASKS) as u32 / 3)
-            .min(MAX_CHECKSUM_DIFFICULTY);
-
         let mut hasher = Sha512::new();
-
-        for _ in 0..rounds {
-            hasher.update(&bytes);
-        }
-
+        hasher.update(&bytes);
         let result = hasher.finalize();
-
-        CONCURRENT_CHECKSUM_TASKS.fetch_sub(1, Ordering::SeqCst);
 
         u64::from_be_bytes(result[0..8].try_into().unwrap())
     })

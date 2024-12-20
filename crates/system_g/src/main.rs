@@ -15,7 +15,7 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
-use tokio::task::JoinError;
+use tokio::task::{yield_now, JoinError};
 
 const DATA_FILE: &str = "data.bin";
 // Total size of the file.
@@ -124,6 +124,9 @@ async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u
 
         for _ in 0..rounds {
             hasher.update(&bytes);
+
+            // Stop work for canceled requests.
+            yield_now().await;
         }
 
         let result = hasher.finalize();

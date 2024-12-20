@@ -8,7 +8,6 @@ use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use rand::Rng;
-use sha2::{Digest, Sha512};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::net::TcpListener;
@@ -78,7 +77,7 @@ async fn hello(
         checksum_tasks.push(schedule_checksum_task(chunk).await);
     }
 
-    let mut checksum_total: u64 = 0;
+    let mut checksum_total: u32 = 0;
 
     for task in checksum_tasks {
         checksum_total = checksum_total.wrapping_add(task.await?);
@@ -91,15 +90,11 @@ async fn hello(
     ))))
 }
 
-async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
+async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u32, JoinError>> {
     tokio::task::spawn(async move {
         log_something().await;
 
-        let mut hasher = Sha512::new();
-        hasher.update(&bytes);
-        let result = hasher.finalize();
-
-        u64::from_be_bytes(result[0..8].try_into().unwrap())
+        crc32fast::hash(&bytes)
     })
 }
 

@@ -83,7 +83,8 @@ async fn hello(
 
             let extra_rounds = 2usize
                 .pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_IO_TASKS) as u32)
-                .min(MAX_IO_DIFFICULTY) - 1;
+                .min(MAX_IO_DIFFICULTY)
+                - 1;
 
             file.read_exact(chunk.as_mut_slice()).await?;
 

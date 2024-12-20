@@ -90,7 +90,9 @@ async fn hello(
             // If there are already too many concurrent I/O tasks, the I/O device starts
             // to slow down (simulated here by sleeping). We need to simulate because our
             // real I/O on the test system can easily handle far larger workloads.
-            tokio::time::sleep(std::time::Duration::from_millis(extra_rounds as u64)).await;
+            if extra_rounds > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(extra_rounds as u64)).await;
+            }
         }
 
         checksum_tasks.push(schedule_checksum_task(chunk).await);
@@ -112,7 +114,7 @@ async fn hello(
 static CONCURRENT_IO_TASKS: AtomicUsize = AtomicUsize::new(0);
 // If we start to accumulate more than this amount of tasks, processing starts to slow down rapidly.
 const MAX_FAST_CONCURRENT_IO_TASKS: usize = 4;
-const MAX_IO_DIFFICULTY: usize = 1024;
+const MAX_IO_DIFFICULTY: usize = 32;
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u32, JoinError>> {
     tokio::task::spawn(async move {

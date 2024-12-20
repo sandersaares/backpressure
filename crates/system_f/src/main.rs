@@ -91,6 +91,7 @@ async fn hello(
             // to slow down (simulated here by sleeping). We need to simulate because our
             // real I/O on the test system can easily handle far larger workloads.
             if extra_rounds > 0 {
+                println!("Extra rounds: {}", extra_rounds);
                 tokio::time::sleep(std::time::Duration::from_millis(extra_rounds as u64)).await;
             }
         }

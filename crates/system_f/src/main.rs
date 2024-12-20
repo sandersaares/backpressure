@@ -10,7 +10,6 @@ use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use rand::Rng;
 use scope_guard::scope_guard;
-use sha2::{Digest, Sha512};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::net::TcpListener;
@@ -78,11 +77,11 @@ async fn hello(
 
         {
             let tasks = CONCURRENT_IO_TASKS.fetch_add(1, Ordering::SeqCst);
-            scope_guard!(|| {
+            let _tasks_guard = scope_guard!(|| {
                 CONCURRENT_IO_TASKS.fetch_sub(1, Ordering::SeqCst);
             });
 
-            let rounds = 2usize
+            let extra_rounds = 2usize
                 .pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_IO_TASKS) as u32)
                 .min(MAX_IO_DIFFICULTY);
 
@@ -91,15 +90,13 @@ async fn hello(
             // If there are already too many concurrent I/O tasks, the I/O device starts
             // to slow down (simulated here by sleeping). We need to simulate because our
             // real I/O on the test system can easily handle far larger workloads.
-            for _ in 1..rounds {
-                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-            }
+            tokio::time::sleep(std::time::Duration::from_millis(extra_rounds as u64)).await;
         }
 
         checksum_tasks.push(schedule_checksum_task(chunk).await);
     }
 
-    let mut checksum_total: u64 = 0;
+    let mut checksum_total: u32 = 0;
 
     for task in checksum_tasks {
         checksum_total = checksum_total.wrapping_add(task.await?);
@@ -117,15 +114,11 @@ static CONCURRENT_IO_TASKS: AtomicUsize = AtomicUsize::new(0);
 const MAX_FAST_CONCURRENT_IO_TASKS: usize = 4;
 const MAX_IO_DIFFICULTY: usize = 1024;
 
-async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
+async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u32, JoinError>> {
     tokio::task::spawn(async move {
         log_something().await;
 
-        let mut hasher = Sha512::new();
-        hasher.update(&bytes);
-        let result = hasher.finalize();
-
-        u64::from_be_bytes(result[0..8].try_into().unwrap())
+        crc32fast::hash(&bytes)
     })
 }
 

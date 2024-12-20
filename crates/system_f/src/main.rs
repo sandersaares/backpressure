@@ -13,7 +13,7 @@ use sha2::{Digest, Sha512};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::net::TcpListener;
-use tokio::task::{JoinError, yield_now};
+use tokio::task::JoinError;
 
 const DATA_FILE: &str = "data.bin";
 // Total size of the file.
@@ -94,7 +94,8 @@ async fn hello(
 
 static CONCURRENT_CHECKSUM_TASKS: AtomicUsize = AtomicUsize::new(0);
 // If we start to accumulate more than this amount of tasks, processing starts to slow down rapidly.
-const MAX_FAST_CONCURRENT_CHECKSUM_TASKS: usize = 50;
+const MAX_FAST_CONCURRENT_CHECKSUM_TASKS: usize = 75;
+const MAX_CHECKSUM_DIFFICULTY: usize = 10;
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u64, JoinError>> {
     tokio::task::spawn(async move {
@@ -102,15 +103,14 @@ async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u
 
         let tasks = CONCURRENT_CHECKSUM_TASKS.fetch_add(1, Ordering::SeqCst);
 
-        let rounds = 2usize.pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_CHECKSUM_TASKS) as u32);
+        let rounds = 2usize
+            .pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_CHECKSUM_TASKS) as u32 / 3)
+            .max(MAX_CHECKSUM_DIFFICULTY);
 
         let mut hasher = Sha512::new();
 
         for _ in 0..rounds {
             hasher.update(&bytes);
-
-            // Stop work for canceled requests.
-            yield_now().await;
         }
 
         let result = hasher.finalize();

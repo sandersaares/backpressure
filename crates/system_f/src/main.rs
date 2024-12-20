@@ -87,7 +87,8 @@ async fn hello(
             // If there are already too many concurrent I/O tasks, the I/O device starts
             // to slow down (simulated here by reading the chunk multiple times and by re-
             // aligning the offset to continue the read from some other location to avoid
-            // fast cached reads).
+            // fast cached reads). We simulate this because our actual I/O capabilities on the
+            // test systems are pretty good and not easy to slow down at all.
             for _ in 1..rounds {
                 let offset_in_file = choose_offset_in_file().await;
                 let chunk_offset = offset_in_file + chunk_index * CHUNK_SIZE;

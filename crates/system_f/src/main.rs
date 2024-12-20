@@ -9,6 +9,7 @@ use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use rand::Rng;
+use scope_guard::scope_guard;
 use sha2::{Digest, Sha512};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -77,6 +78,9 @@ async fn hello(
 
         {
             let tasks = CONCURRENT_IO_TASKS.fetch_add(1, Ordering::SeqCst);
+            scope_guard!(|| {
+                CONCURRENT_IO_TASKS.fetch_sub(1, Ordering::SeqCst);
+            });
 
             let rounds = 2usize
                 .pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_IO_TASKS) as u32 / 3)
@@ -90,8 +94,6 @@ async fn hello(
             for _ in 1..rounds {
                 tokio::time::sleep(std::time::Duration::from_millis(1)).await;
             }
-
-            CONCURRENT_IO_TASKS.fetch_sub(1, Ordering::SeqCst);
         }
 
         checksum_tasks.push(schedule_checksum_task(chunk).await);

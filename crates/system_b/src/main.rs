@@ -102,7 +102,7 @@ async fn hello(
 }
 
 /// Number of processors that are allowed to be utilized before we block new traffic.
-const CPU_LIMITER_THRESHOLD: f64 = 1.0;
+const CPU_LIMITER_THRESHOLD: f64 = 1.8;
 
 /// The default CPU time allocation period in Kubernetes is 100ms.
 /// We use a value at least double this to have enough data for meaningful averages.

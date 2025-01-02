@@ -127,7 +127,7 @@ const MAX_IO_DIFFICULTY: usize = 32;
 
 // If there are already more than this number of I/O tasks enqueued, we do not accept more.
 // This is our "I/O resources nearing exhaustion" limit.
-const MAX_ACCEPT_CONCURRENT_IO_TASKS: usize = 2;
+const MAX_ACCEPT_CONCURRENT_IO_TASKS: usize = 1;
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u32, JoinError>> {
     tokio::task::spawn(async move {

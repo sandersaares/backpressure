@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 }
 
-static REQUEST_HANDLER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(2));
+static REQUEST_HANDLER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(4));
 
 async fn hello(
     _: Request<hyper::body::Incoming>,

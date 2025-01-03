@@ -30,7 +30,7 @@ const CHUNK_SIZE: u64 = 1024 * 1024;
 // If we are in a delaying mode of operation, delay a request by this factor multiplied by the ratio
 // of our capacity used (so if all capacity is used we delay up to this many milliseconds, if half
 // capacity is used we delay half this amount, if double capacity is used we delay twice this).
-const NOMINAL_DELAY_MILLIS: u64 = 100;
+const NOMINAL_DELAY_MILLIS: u64 = 20;
 
 // We start delaying once we have reached this ratio of our nominal capacity.
 const SAFE_LOAD_RATIO: f64 = 0.5;

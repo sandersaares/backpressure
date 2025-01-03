@@ -131,6 +131,13 @@ async fn hello(
 
     log_something().await;
 
+    let predicted_old = PREDICTED_IO_TASKS.load(Ordering::SeqCst);
+
+    if predicted_old > 0 {
+        // Yes, imperfect, but who cares this is sloppy algorithm just to prototype it.
+        PREDICTED_IO_TASKS.store(predicted_old - 1, Ordering::SeqCst);
+    }
+
     Ok(Response::new(Full::new(Bytes::from(
         checksum_total.to_string(),
     ))))

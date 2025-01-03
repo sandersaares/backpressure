@@ -1,8 +1,7 @@
 use std::mem::{self, MaybeUninit};
 use std::net::SocketAddr;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use http_body_util::Full;
 use hyper::body::Bytes;

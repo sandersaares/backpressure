@@ -25,6 +25,14 @@ const PROCESS_SIZE: u64 = 32 * 1024 * 1024;
 // Size of one piece whose checksum we calculate concurrently.
 const CHUNK_SIZE: u64 = 1024 * 1024;
 
+// If we are in a delaying mode of operation, delay a request by this factor multiplied by the ratio
+// of our capacity used (so if all capacity is used we delay up to this many milliseconds, if half
+// capacity is used we delay half this amount, if double capacity is used we delay twice this).
+const NOMINAL_DELAY_MILLIS: u64 = 100;
+
+// We start delaying once we have reached this ratio of our nominal capacity.
+const SAFE_LOAD_RATIO: f64 = 0.5;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     {
@@ -56,17 +64,17 @@ async fn hello(
 ) -> Result<Response<Full<Bytes>>, Box<dyn std::error::Error + Send + Sync>> {
     drain_predicted_io_tasks();
 
-    if PREDICTED_IO_TASKS.load(Ordering::SeqCst) + CONCURRENT_IO_TASKS.load(Ordering::SeqCst)
-        >= MAX_ACCEPT_CONCURRENT_IO_TASKS
-    {
-        let mut response = Response::new(Full::new(Bytes::from(
-            "Too many requests, please try again later.",
-        )));
-        *response.status_mut() = hyper::StatusCode::TOO_MANY_REQUESTS;
-        return Ok(response);
-    }
+    let current_load = (PREDICTED_IO_TASKS.load(Ordering::SeqCst)
+        + CONCURRENT_IO_TASKS.load(Ordering::SeqCst)) as f64
+        / MAX_ACCEPT_CONCURRENT_IO_TASKS as f64;
 
     PREDICTED_IO_TASKS.fetch_add(1, Ordering::SeqCst);
+
+    if current_load > SAFE_LOAD_RATIO {
+        let delay = (NOMINAL_DELAY_MILLIS as f64 * (current_load - SAFE_LOAD_RATIO)
+            / (1.0 - SAFE_LOAD_RATIO)) as u64;
+        tokio::time::sleep(Duration::from_millis(delay)).await;
+    }
 
     let offset_in_file = choose_offset_in_file().await;
 

@@ -118,8 +118,10 @@ async fn hello(
                 guard.set(new_value);
             });
 
+            // We do an extra -1 here because the previous algorithm we derived from this used
+            // a value offset by -1 there by accident (system G). Oops! Keep it to maintain parity.
             let extra_rounds = 2usize
-                .pow(concurrent_tasks.saturating_sub(MAX_FAST_CONCURRENT_IO_TASKS) as u32)
+                .pow(concurrent_tasks.saturating_sub(MAX_FAST_CONCURRENT_IO_TASKS - 1) as u32)
                 .min(MAX_IO_DIFFICULTY)
                 - 1;
 

@@ -63,17 +63,21 @@ async fn hello(
 ) -> Result<Response<Full<Bytes>>, Box<dyn std::error::Error + Send + Sync>> {
     let current_load = (REQUESTS_IN_STARTUP.load(Ordering::SeqCst)
         + CONCURRENT_IO_TASKS.load(Ordering::SeqCst)) as f64
-        / MAX_ACCEPT_CONCURRENT_IO_TASKS as f64;
+        / MAX_FAST_CONCURRENT_IO_TASKS as f64;
 
     REQUESTS_IN_STARTUP.fetch_add(1, Ordering::SeqCst);
 
-    if current_load > SAFE_LOAD_RATIO {
-        let delay = (NOMINAL_DELAY_MILLIS as f64 * (current_load - SAFE_LOAD_RATIO)
-            / (1.0 - SAFE_LOAD_RATIO)) as u64;
-        tokio::time::sleep(Duration::from_millis(delay)).await;
-    }
+    {
+        let _guard = scope_guard!(|| {
+            REQUESTS_IN_STARTUP.fetch_sub(1, Ordering::SeqCst);
+        });
 
-    REQUESTS_IN_STARTUP.fetch_sub(1, Ordering::SeqCst);
+        if current_load > SAFE_LOAD_RATIO {
+            let delay = (NOMINAL_DELAY_MILLIS as f64 * (current_load - SAFE_LOAD_RATIO)
+                / (1.0 - SAFE_LOAD_RATIO)) as u64;
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+        }
+    }
 
     let offset_in_file = choose_offset_in_file().await;
 
@@ -145,10 +149,6 @@ static CONCURRENT_IO_TASKS: AtomicUsize = AtomicUsize::new(0);
 // If we start to accumulate more than this amount of tasks, processing starts to slow down rapidly.
 const MAX_FAST_CONCURRENT_IO_TASKS: usize = 4;
 const MAX_IO_DIFFICULTY: usize = 32;
-
-// If there are already more than this number of I/O tasks enqueued, we do not accept more.
-// This is our "I/O resources nearing exhaustion" limit.
-const MAX_ACCEPT_CONCURRENT_IO_TASKS: usize = 1;
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u32, JoinError>> {
     tokio::task::spawn(async move {

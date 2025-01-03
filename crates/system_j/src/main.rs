@@ -62,19 +62,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 async fn hello(
     _: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Box<dyn std::error::Error + Send + Sync>> {
-    drain_predicted_io_tasks();
-
-    let current_load = (PREDICTED_IO_TASKS.load(Ordering::SeqCst)
+    let current_load = (REQUESTS_IN_STARTUP.load(Ordering::SeqCst)
         + CONCURRENT_IO_TASKS.load(Ordering::SeqCst)) as f64
         / MAX_ACCEPT_CONCURRENT_IO_TASKS as f64;
 
-    PREDICTED_IO_TASKS.fetch_add(1, Ordering::SeqCst);
+    REQUESTS_IN_STARTUP.fetch_add(1, Ordering::SeqCst);
 
     if current_load > SAFE_LOAD_RATIO {
         let delay = (NOMINAL_DELAY_MILLIS as f64 * (current_load - SAFE_LOAD_RATIO)
             / (1.0 - SAFE_LOAD_RATIO)) as u64;
         tokio::time::sleep(Duration::from_millis(delay)).await;
     }
+
+    REQUESTS_IN_STARTUP.fetch_sub(1, Ordering::SeqCst);
 
     let offset_in_file = choose_offset_in_file().await;
 
@@ -131,27 +131,16 @@ async fn hello(
 
     log_something().await;
 
-    let predicted_old = PREDICTED_IO_TASKS.load(Ordering::SeqCst);
-
-    if predicted_old > 0 {
-        // Yes, imperfect, but who cares this is sloppy algorithm just to prototype it.
-        PREDICTED_IO_TASKS.store(predicted_old - 1, Ordering::SeqCst);
-    }
-
     Ok(Response::new(Full::new(Bytes::from(
         checksum_total.to_string(),
     ))))
 }
 
 // Whenever we accept a request we suspect will perform I/O, we increment this counter
-// and count it as "preloaded" for the purpose of determining I/O load levels.
-static PREDICTED_IO_TASKS: AtomicUsize = AtomicUsize::new(0);
-
-// It is possible that predicted I/O load never arrives, so we drain them at a fast rate.
-// The expectation is that predicted load arrives almost immediately or never, so the drain is fast.
-static PREDICTION_DRAIN_INTERVAL: Duration = Duration::from_millis(1);
-
-static PREDICTED_LAST_DRAINED: Mutex<Option<Instant>> = Mutex::new(None);
+// and count it as "preloaded" for the purpose of determining I/O load levels. We use this
+// to track requests that we predict will perform I/O, while they may still be in the delay-start
+// phase of their lifecycle (i.e. they are "phantom load" we need to account for).
+static REQUESTS_IN_STARTUP: AtomicUsize = AtomicUsize::new(0);
 
 static CONCURRENT_IO_TASKS: AtomicUsize = AtomicUsize::new(0);
 // If we start to accumulate more than this amount of tasks, processing starts to slow down rapidly.
@@ -161,27 +150,6 @@ const MAX_IO_DIFFICULTY: usize = 32;
 // If there are already more than this number of I/O tasks enqueued, we do not accept more.
 // This is our "I/O resources nearing exhaustion" limit.
 const MAX_ACCEPT_CONCURRENT_IO_TASKS: usize = 1;
-
-fn drain_predicted_io_tasks() {
-    let mut last_drained = PREDICTED_LAST_DRAINED.lock().unwrap();
-    if let Some(last_drained) = *last_drained {
-        if last_drained.elapsed() < PREDICTION_DRAIN_INTERVAL {
-            return;
-        }
-    }
-
-    *last_drained = Some(Instant::now());
-
-    let previous = PREDICTED_IO_TASKS.load(Ordering::SeqCst);
-
-    if previous == 0 {
-        return;
-    }
-
-    let new = previous.saturating_sub(1);
-    // Yes we might overwrite some increment here but good enough for a dirty job.
-    PREDICTED_IO_TASKS.store(new, Ordering::SeqCst);
-}
 
 async fn schedule_checksum_task(bytes: Vec<u8>) -> impl Future<Output = Result<u32, JoinError>> {
     tokio::task::spawn(async move {

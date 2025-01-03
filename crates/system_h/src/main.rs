@@ -21,7 +21,7 @@ const FILE_SIZE: u64 = 128 * 1024 * 1024 * 1024;
 // Size of one random piece we process as result of a request.
 const PROCESS_SIZE: u64 = 32 * 1024 * 1024;
 // Size of one piece whose checksum we calculate concurrently.
-const CHUNK_SIZE: u64 = 1 * 1024 * 1024;
+const CHUNK_SIZE: u64 = 1024 * 1024;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

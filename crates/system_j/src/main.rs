@@ -77,9 +77,9 @@ async fn hello(
         });
 
         if recent_peak_load > SAFE_LOAD_RATIO {
-            let delay = (NOMINAL_DELAY_MILLIS as f64 * (recent_peak_load - SAFE_LOAD_RATIO)
-                / (1.0 - SAFE_LOAD_RATIO)) as u64;
-            tokio::time::sleep(Duration::from_millis(delay)).await;
+            let capacity_used_ratio = recent_peak_load / MAX_FAST_CONCURRENT_IO_TASKS as f64;
+            let delay = NOMINAL_DELAY_MILLIS as f64 * capacity_used_ratio;
+            tokio::time::sleep(Duration::from_millis(delay as u64)).await;
         }
     }
 

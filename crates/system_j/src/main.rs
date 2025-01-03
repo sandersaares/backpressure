@@ -1,5 +1,6 @@
 use std::mem::{self, MaybeUninit};
 use std::net::SocketAddr;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -15,6 +16,9 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinError;
+
+mod peaker;
+use peaker::Peaker;
 
 const DATA_FILE: &str = "data.bin";
 // Total size of the file.
@@ -61,8 +65,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 async fn hello(
     _: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Box<dyn std::error::Error + Send + Sync>> {
-    let current_load = (REQUESTS_IN_STARTUP.load(Ordering::SeqCst)
-        + CONCURRENT_IO_TASKS.load(Ordering::SeqCst)) as f64
+    let recent_peak_load = (REQUESTS_IN_STARTUP.load(Ordering::SeqCst)
+        + CONCURRENT_IO_TASKS.lock().unwrap().peak()) as f64
         / MAX_FAST_CONCURRENT_IO_TASKS as f64;
 
     REQUESTS_IN_STARTUP.fetch_add(1, Ordering::SeqCst);
@@ -72,8 +76,8 @@ async fn hello(
             REQUESTS_IN_STARTUP.fetch_sub(1, Ordering::SeqCst);
         });
 
-        if current_load > SAFE_LOAD_RATIO {
-            let delay = (NOMINAL_DELAY_MILLIS as f64 * (current_load - SAFE_LOAD_RATIO)
+        if recent_peak_load > SAFE_LOAD_RATIO {
+            let delay = (NOMINAL_DELAY_MILLIS as f64 * (recent_peak_load - SAFE_LOAD_RATIO)
                 / (1.0 - SAFE_LOAD_RATIO)) as u64;
             tokio::time::sleep(Duration::from_millis(delay)).await;
         }
@@ -103,13 +107,19 @@ async fn hello(
         file.seek(std::io::SeekFrom::Start(chunk_offset)).await?;
 
         {
-            let tasks = CONCURRENT_IO_TASKS.fetch_add(1, Ordering::SeqCst);
-            let _tasks_guard = scope_guard!(|| {
-                CONCURRENT_IO_TASKS.fetch_sub(1, Ordering::SeqCst);
+            let concurrent_tasks = {
+                let mut guard = CONCURRENT_IO_TASKS.lock().unwrap();
+                let new_value = guard.get() + 1;
+                guard.set(new_value)
+            };
+            let _tasks_dec_guard = scope_guard!(|| {
+                let mut guard = CONCURRENT_IO_TASKS.lock().unwrap();
+                let new_value = guard.get() - 1;
+                guard.set(new_value);
             });
 
             let extra_rounds = 2usize
-                .pow(tasks.saturating_sub(MAX_FAST_CONCURRENT_IO_TASKS) as u32)
+                .pow(concurrent_tasks.saturating_sub(MAX_FAST_CONCURRENT_IO_TASKS) as u32)
                 .min(MAX_IO_DIFFICULTY)
                 - 1;
 
@@ -145,7 +155,8 @@ async fn hello(
 // phase of their lifecycle (i.e. they are "phantom load" we need to account for).
 static REQUESTS_IN_STARTUP: AtomicUsize = AtomicUsize::new(0);
 
-static CONCURRENT_IO_TASKS: AtomicUsize = AtomicUsize::new(0);
+static CONCURRENT_IO_TASKS: Mutex<Peaker<100>> = Mutex::new(Peaker::new());
+
 // If we start to accumulate more than this amount of tasks, processing starts to slow down rapidly.
 const MAX_FAST_CONCURRENT_IO_TASKS: usize = 4;
 const MAX_IO_DIFFICULTY: usize = 32;
